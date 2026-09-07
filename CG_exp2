@@ -1,0 +1,51 @@
+import pygame
+ 
+pygame.init()
+screen = pygame.display.set_mode((800, 600))
+pygame.display.set_caption("Reflection and Shearing")
+ 
+WHITE = (255, 255, 255)
+BLUE = (0, 0, 255)
+RED = (255, 0, 0)
+GREEN = (0, 180, 0)
+ 
+triangle = [(200, 200), (300, 200), (250, 100)]
+ 
+ 
+def transform(points, matrix):
+    result = []
+    for x, y in points:
+        nx = matrix[0][0] * x + matrix[0][1] * y
+        ny = matrix[1][0] * x + matrix[1][1] * y
+        result.append((round(nx), round(ny)))
+    return result
+ 
+ 
+# Reflection about the X axis
+reflection_x = [[1, 0, 0], [0, -1, 0], [0, 0, 1]]
+ 
+# Shear along X axis
+shx = 0.5
+shear_x = [[1, shx, 0], [0, 1, 0], [0, 0, 1]]
+ 
+reflected = transform(triangle, reflection_x)
+sheared = transform(triangle, shear_x)
+ 
+# Flip back into the visible window (screen Y grows downward)
+reflected = [(x, 500 - y) for x, y in reflected]
+ 
+running = True
+while running:
+    screen.fill(WHITE)
+ 
+    pygame.draw.polygon(screen, BLUE, triangle, 2)     # original
+    pygame.draw.polygon(screen, RED, reflected, 2)     # reflected
+    pygame.draw.polygon(screen, GREEN, sheared, 2)     # sheared
+ 
+    pygame.display.update()
+ 
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+ 
+pygame.quit()
