@@ -1,0 +1,57 @@
+import pygame
+import math
+ 
+pygame.init()
+screen = pygame.display.set_mode((800, 600))
+pygame.display.set_caption("2D Transformations")
+ 
+WHITE = (255, 255, 255)
+BLUE = (0, 0, 255)
+RED = (255, 0, 0)
+GREEN = (0, 180, 0)
+PURPLE = (150, 0, 150)
+ 
+triangle = [(150, 150), (250, 150), (200, 70)]
+ 
+ 
+def transform(points, matrix):
+    result = []
+    for x, y in points:
+        nx = matrix[0][0] * x + matrix[0][1] * y + matrix[0][2]
+        ny = matrix[1][0] * x + matrix[1][1] * y + matrix[1][2]
+        result.append((round(nx), round(ny)))
+    return result
+ 
+ 
+# Translation matrix (shift by 250 in x, 100 in y)
+T = [[1, 0, 250], [0, 1, 100], [0, 0, 1]]
+ 
+# Scaling matrix (1.5x in both directions)
+S = [[1.5, 0, 0], [0, 1.5, 0], [0, 0, 1]]
+ 
+# Rotation matrix (30 degrees about origin)
+angle = math.radians(30)
+R = [[math.cos(angle), -math.sin(angle), 0],
+     [math.sin(angle), math.cos(angle), 0],
+     [0, 0, 1]]
+ 
+translated = transform(triangle, T)
+scaled = transform(triangle, S)
+rotated = transform(triangle, R)
+ 
+running = True
+while running:
+    screen.fill(WHITE)
+ 
+    pygame.draw.polygon(screen, BLUE, triangle, 2)     # original
+    pygame.draw.polygon(screen, RED, translated, 2)    # translated
+    pygame.draw.polygon(screen, GREEN, scaled, 2)      # scaled
+    pygame.draw.polygon(screen, PURPLE, rotated, 2)    # rotated
+ 
+    pygame.display.update()
+ 
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+ 
+pygame.quit()
