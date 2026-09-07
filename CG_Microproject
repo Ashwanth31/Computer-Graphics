@@ -1,0 +1,399 @@
+import math
+import random
+import sys
+import pygame
+
+CELL = 32
+GRID_W, GRID_H = 21, 15
+HUD_HEIGHT = 64
+WIDTH, HEIGHT = GRID_W * CELL, GRID_H * CELL + HUD_HEIGHT
+FPS = 60
+
+BLACK, WHITE, YELLOW = (10, 10, 25), (255, 255, 255), (255, 215, 0)
+RED, PINK, CYAN, ORANGE = (220, 40, 40), (255, 105, 180), (60, 220, 220), (255, 165, 0)
+SCARED_COLOR, EATEN_COLOR = (70, 70, 235), (150, 150, 255)
+WALL_FILL, WALL_LINE = (35, 35, 130), (110, 150, 255)
+DOT_COLOR, PELLET_COLOR, HUD_BG = (255, 255, 180), (255, 255, 255), (15, 15, 35)
+
+PLAYER_START = (1, 1)
+GHOST_HOMES = [(9, 6), (11, 6), (9, 7), (11, 7)]
+GHOST_COLORS = [RED, PINK, CYAN, ORANGE]
+WALL_BLOCKS = [(2, 2, 4, 2), (2, 6, 4, 2), (2, 10, 4, 2), (9, 2, 3, 3), (9, 9, 3, 3),
+               (15, 2, 4, 2), (15, 6, 4, 2), (15, 10, 4, 2), (6, 6, 2, 3), (13, 6, 2, 3)]
+POWER_PELLET_CELLS = [(1, 13), (19, 1), (19, 13), (10, 1)]
+
+MOVE_TIME, GHOST_MOVE_TIME, POWER_MODE_MS = 150, 190, 6000
+
+GHOST_SHAPE = [(-14, 4), (-14, -6), (-10, -13), (-4, -16), (4, -16), (10, -13),
+               (14, -6), (14, 4), (10, 0), (6, 6), (2, 0), (-2, 6), (-6, 0), (-10, 6)]
+
+
+def dda_line(x1, y1, x2, y2):
+    """DDA line algorithm."""
+    dx, dy = x2 - x1, y2 - y1
+    steps = int(max(abs(dx), abs(dy)))
+    if steps == 0:
+        return [(x1, y1)]
+    xi, yi, x, y = dx / steps, dy / steps, float(x1), float(y1)
+    pts = []
+    for _ in range(steps + 1):
+        pts.append((round(x), round(y)))
+        x += xi; y += yi
+    return pts
+
+
+def bresenham_line(x1, y1, x2, y2):
+    """Bresenham line algorithm."""
+    x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+    dx, dy = abs(x2 - x1), abs(y2 - y1)
+    sx, sy = (1 if x2 > x1 else -1), (1 if y2 > y1 else -1)
+    err, x, y, pts = dx - dy, x1, y1, []
+    while True:
+        pts.append((x, y))
+        if x == x2 and y == y2:
+            return pts
+        e2 = 2 * err
+        if e2 > -dy: err -= dy; x += sx
+        if e2 < dx: err += dx; y += sy
+
+
+def midpoint_circle(xc, yc, r):
+    """Midpoint circle algorithm."""
+    x, y, d, pts = 0, r, 1 - r, []
+    def plot8(px, py):
+        pts.extend([(xc+px,yc+py),(xc-px,yc+py),(xc+px,yc-py),(xc-px,yc-py),
+                    (xc+py,yc+px),(xc-py,yc+px),(xc+py,yc-px),(xc-py,yc-px)])
+    plot8(x, y)
+    while x < y:
+        x += 1
+        if d < 0: d += 2 * x + 1
+        else: y -= 1; d += 2 * (x - y) + 1
+        plot8(x, y)
+    return pts
+
+
+def midpoint_ellipse(xc, yc, rx, ry):
+    """Midpoint ellipse algorithm."""
+    pts = []
+    def plot4(px, py):
+        pts.extend([(xc+px,yc+py),(xc-px,yc+py),(xc+px,yc-py),(xc-px,yc-py)])
+    x, y = 0, ry
+    rx2, ry2 = rx * rx, ry * ry
+    d1 = ry2 - rx2 * ry + 0.25 * rx2
+    dx, dy = 2 * ry2 * x, 2 * rx2 * y
+    plot4(x, y)
+    while dx < dy:
+        x += 1; dx += 2 * ry2
+        if d1 < 0: d1 += dx + ry2
+        else: y -= 1; dy -= 2 * rx2; d1 += dx - dy + ry2
+        plot4(x, y)
+    d2 = ry2 * (x + 0.5) ** 2 + rx2 * (y - 1) ** 2 - rx2 * ry2
+    while y > 0:
+        y -= 1; dy -= 2 * rx2
+        if d2 > 0: d2 += rx2 - dy
+        else: x += 1; dx += 2 * ry2; d2 += dx - dy + rx2
+        plot4(x, y)
+    return pts
+
+
+def sutherland_hodgman_clip(subject, clip):
+    """Sutherland-Hodgman polygon clipping (clip must be convex)."""
+    def inside(p, a, b):
+        return (b[0]-a[0])*(p[1]-a[1]) - (b[1]-a[1])*(p[0]-a[0]) >= 0
+    def intersect(a, b, p, q):
+        x1,y1=a; x2,y2=b; x3,y3=p; x4,y4=q
+        d = (x1-x2)*(y3-y4) - (y1-y2)*(x3-x4)
+        if d == 0: return q
+        t = ((x1-x3)*(y3-y4) - (y1-y3)*(x3-x4)) / d
+        return (x1+t*(x2-x1), y1+t*(y2-y1))
+    out, cp1 = list(subject), clip[-1]
+    for cp2 in clip:
+        if not out: break
+        inp, out, s = out, [], out[-1]
+        for e in inp:
+            e_in, s_in = inside(e, cp1, cp2), inside(s, cp1, cp2)
+            if e_in:
+                if not s_in: out.append(intersect(cp1, cp2, s, e))
+                out.append(e)
+            elif s_in:
+                out.append(intersect(cp1, cp2, s, e))
+            s = e
+        cp1 = cp2
+    return out
+
+
+def scanline_fill_polygon(surface, polygon, color):
+    """Scan-line polygon fill algorithm."""
+    if len(polygon) < 3: return
+    ys = [p[1] for p in polygon]
+    y0, y1 = max(int(min(ys)), 0), min(int(max(ys)), surface.get_height() - 1)
+    n = len(polygon)
+    for y in range(y0, y1 + 1):
+        xs = []
+        for i in range(n):
+            x1, py1 = polygon[i]
+            x2, py2 = polygon[(i + 1) % n]
+            if py1 == py2: continue
+            if min(py1, py2) <= y < max(py1, py2):
+                xs.append(x1 + (y - py1) / (py2 - py1) * (x2 - x1))
+        xs.sort()
+        for i in range(0, len(xs) - 1, 2):
+            a, b = int(round(xs[i])), int(round(xs[i + 1]))
+            if b >= a: pygame.draw.line(surface, color, (a, y), (b, y))
+
+
+
+def is_wall(col, row):
+    if col <= 0 or col >= GRID_W - 1 or row <= 0 or row >= GRID_H - 1:
+        return True
+    return any(bx <= col < bx + bw and by <= row < by + bh for bx, by, bw, bh in WALL_BLOCKS)
+
+
+def cell_center(col, row):
+    return (col * CELL + CELL // 2, row * CELL + HUD_HEIGHT + CELL // 2)
+
+
+def build_wall_surface():
+    """Fills wall cells, then outlines each with DDA (top/bottom) + Bresenham (sides)."""
+    surf = pygame.Surface((WIDTH, HEIGHT))
+    surf.fill(BLACK)
+    pts = set()
+    for row in range(GRID_H):
+        for col in range(GRID_W):
+            if not is_wall(col, row): continue
+            x, y = col * CELL, row * CELL + HUD_HEIGHT
+            pygame.draw.rect(surf, WALL_FILL, (x, y, CELL, CELL))
+            pts.update(dda_line(x, y, x + CELL, y))
+            pts.update(dda_line(x, y + CELL, x + CELL, y + CELL))
+            pts.update(bresenham_line(x, y, x, y + CELL))
+            pts.update(bresenham_line(x + CELL, y, x + CELL, y + CELL))
+    for x, y in pts:
+        if 0 <= x < WIDTH and 0 <= y < HEIGHT: surf.set_at((x, y), WALL_LINE)
+    pygame.draw.rect(surf, HUD_BG, (0, 0, WIDTH, HUD_HEIGHT))
+    return surf
+
+
+def all_open_cells():
+    return [(c, r) for r in range(1, GRID_H - 1) for c in range(1, GRID_W - 1) if not is_wall(c, r)]
+
+
+
+class Actor:
+    def __init__(self, col, row, move_time):
+        self.col, self.row, self.target_col, self.target_row = col, row, col, row
+        self.move_time, self.move_start, self.moving, self.dir = move_time, 0, False, (1, 0)
+
+    def pixel_pos(self):
+        x1, y1 = cell_center(self.col, self.row)
+        if not self.moving: return x1, y1
+        x2, y2 = cell_center(self.target_col, self.target_row)
+        t = min(1.0, (pygame.time.get_ticks() - self.move_start) / self.move_time)
+        return x1 + (x2 - x1) * t, y1 + (y2 - y1) * t
+
+    def update(self):
+        if self.moving and pygame.time.get_ticks() - self.move_start >= self.move_time:
+            self.col, self.row, self.moving = self.target_col, self.target_row, False
+
+    def try_move(self, dcol, drow):
+        if self.moving or (dcol, drow) == (0, 0): return False
+        nc, nr = self.col + dcol, self.row + drow
+        if is_wall(nc, nr): return False
+        self.target_col, self.target_row = nc, nr
+        self.moving, self.move_start, self.dir = True, pygame.time.get_ticks(), (dcol, drow)
+        return True
+
+
+class Player(Actor):
+    def __init__(self, col, row):
+        super().__init__(col, row, MOVE_TIME)
+        self.next_dir, self.lives, self.score = (0, 0), 3, 0
+
+    def handle_input(self, keys):
+        if keys[pygame.K_LEFT]: self.next_dir = (-1, 0)
+        elif keys[pygame.K_RIGHT]: self.next_dir = (1, 0)
+        elif keys[pygame.K_UP]: self.next_dir = (0, -1)
+        elif keys[pygame.K_DOWN]: self.next_dir = (0, 1)
+
+    def update_move(self):
+        if not self.moving and self.next_dir != (0, 0):
+            self.try_move(*self.next_dir)
+
+
+class Ghost(Actor):
+    def __init__(self, col, row, color):
+        super().__init__(col, row, GHOST_MOVE_TIME)
+        self.color, self.home, self.scared, self.eaten = color, (col, row), False, False
+
+    def choose_direction(self, pc, pr):
+        reverse = (-self.dir[0], -self.dir[1])
+        cand = [d for d in [(1,0),(-1,0),(0,1),(0,-1)] if not is_wall(self.col+d[0], self.row+d[1])]
+        if len(cand) > 1 and reverse in cand: cand.remove(reverse)
+        if not cand:
+            cand = [reverse] if not is_wall(self.col+reverse[0], self.row+reverse[1]) else [(1,0),(-1,0),(0,1),(0,-1)]
+        sq = lambda d, tx, ty: (self.col+d[0]-tx)**2 + (self.row+d[1]-ty)**2
+        if self.eaten:
+            tx, ty = self.home
+            return min(cand, key=lambda d: sq(d, tx, ty))
+        if self.scared:
+            return max(cand, key=lambda d: sq(d, pc, pr)) if random.random() < 0.7 else random.choice(cand)
+        return min(cand, key=lambda d: sq(d, pc, pr)) if random.random() < 0.65 else random.choice(cand)
+
+
+class GameState:
+    def __init__(self):
+        self.player = Player(*PLAYER_START)
+        self.ghosts = [Ghost(c, r, col) for (c, r), col in zip(GHOST_HOMES, GHOST_COLORS)]
+
+        open_cells = set(all_open_cells()) - {PLAYER_START} - set(GHOST_HOMES)
+        pellet_cells = [c for c in POWER_PELLET_CELLS if c in open_cells]
+        dot_cells = open_cells - set(pellet_cells)
+
+        self.dots, self.pellets = set(dot_cells), set(pellet_cells)
+        self.dot_points = {c: midpoint_circle(*cell_center(*c), 3) for c in dot_cells}
+        self.pellet_points = {c: midpoint_ellipse(*cell_center(*c), 6, 4) for c in pellet_cells}
+        self.power_mode_until, self.game_over, self.win = 0, False, False
+
+    def reset_actor_positions(self):
+        self.player.col, self.player.row, self.player.moving, self.player.next_dir = *PLAYER_START, False, (0, 0)
+        for g in self.ghosts:
+            g.col, g.row = g.home
+            g.moving = g.scared = g.eaten = False
+
+
+
+def draw_dots(surface, s):
+    for c in s.dots:
+        for p in s.dot_points[c]: surface.set_at(p, DOT_COLOR)
+    for c in s.pellets:
+        for p in s.pellet_points[c]: surface.set_at(p, PELLET_COLOR)
+
+
+def draw_flashlight(surface, player):
+    """Sutherland-Hodgman demo: a long light cone clipped to the play area."""
+    px, py = player.pixel_pos()
+    dx, dy = player.dir if player.dir != (0, 0) else (1, 0)
+    angle, length, spread = math.atan2(dy, dx), 240, 0.5
+    cone = [(px, py),
+            (px + length*math.cos(angle-spread), py + length*math.sin(angle-spread)),
+            (px + length*math.cos(angle+spread), py + length*math.sin(angle+spread))]
+    clip_rect = [(0, HUD_HEIGHT), (WIDTH, HUD_HEIGHT), (WIDTH, HEIGHT), (0, HEIGHT)]
+    clipped = sutherland_hodgman_clip(cone, clip_rect)
+    if len(clipped) >= 3:
+        glow = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        pygame.draw.polygon(glow, (255, 255, 150, 55), clipped)
+        surface.blit(glow, (0, 0))
+
+
+def draw_player(surface, player):
+    x, y = player.pixel_pos()
+    r = 13
+    for rr in range(r + 1):
+        for p in midpoint_circle(int(x), int(y), rr):
+            if 0 <= p[0] < WIDTH and 0 <= p[1] < HEIGHT: surface.set_at(p, YELLOW)
+    if (pygame.time.get_ticks() // 150) % 2 == 0:
+        dx, dy = player.dir if player.dir != (0, 0) else (1, 0)
+        angle = math.atan2(dy, dx)
+        a1, a2 = angle - 0.45, angle + 0.45
+        mouth = [(x, y), (x + r*1.3*math.cos(a1), y + r*1.3*math.sin(a1)),
+                 (x + r*1.3*math.cos(a2), y + r*1.3*math.sin(a2))]
+        pygame.draw.polygon(surface, BLACK, mouth)
+
+
+def draw_ghost(surface, g):
+    x, y = g.pixel_pos()
+    poly = [(x + dx, y + dy) for dx, dy in GHOST_SHAPE]
+    color = EATEN_COLOR if g.eaten else SCARED_COLOR if g.scared else g.color
+    scanline_fill_polygon(surface, poly, color)
+    if not g.eaten:
+        for ex in (-5, 5):
+            for p in midpoint_circle(int(x + ex), int(y - 4), 3): surface.set_at(p, WHITE)
+            shift = 2 if g.dir[0] >= 0 else -2
+            for p in midpoint_circle(int(x + ex + shift), int(y - 4), 1): surface.set_at(p, BLACK)
+
+
+def draw_hud(surface, s):
+    pygame.draw.rect(surface, HUD_BG, (0, 0, WIDTH, HUD_HEIGHT))
+    font = pygame.font.SysFont("consolas", 18)
+    surface.blit(font.render(f"Score: {s.player.score}    Lives: {s.player.lives}", True, WHITE), (10, 8))
+    surface.blit(font.render("DDA | Bresenham | Midpoint Circle | Midpoint Ellipse | Scan-Line Fill | Sutherland-Hodgman",
+                              True, (150, 200, 255)), (10, 32))
+    if s.game_over or s.win:
+        big = pygame.font.SysFont("consolas", 34, bold=True)
+        msg = big.render("YOU WIN!  Press R to restart", True, (80, 255, 120)) if s.win \
+            else big.render("GAME OVER  Press R to restart", True, RED)
+        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 140))
+        surface.blit(overlay, (0, 0))
+        surface.blit(msg, (WIDTH // 2 - msg.get_width() // 2, HEIGHT // 2 - 20))
+
+
+
+def main():
+    pygame.init()
+    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    pygame.display.set_caption("Maze Muncher — CG Algorithms Demo")
+    clock = pygame.time.Clock()
+    wall_surface = build_wall_surface()
+    state = GameState()
+
+    running = True
+    while running:
+        clock.tick(FPS)
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT: running = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE: running = False
+                elif event.key == pygame.K_r and (state.game_over or state.win): state = GameState()
+
+        if not state.game_over and not state.win:
+            state.player.handle_input(pygame.key.get_pressed())
+            state.player.update_move()
+            state.player.update()
+
+            for g in state.ghosts:
+                g.update()
+                if not g.moving:
+                    g.try_move(*g.choose_direction(state.player.col, state.player.row))
+                if g.eaten and not g.moving and (g.col, g.row) == g.home:
+                    g.eaten = g.scared = False
+
+            pos = (state.player.col, state.player.row)
+            if pos in state.dots:
+                state.dots.discard(pos); state.player.score += 10
+            if pos in state.pellets:
+                state.pellets.discard(pos); state.player.score += 50
+                state.power_mode_until = pygame.time.get_ticks() + POWER_MODE_MS
+                for g in state.ghosts:
+                    if not g.eaten: g.scared = True
+            if pygame.time.get_ticks() > state.power_mode_until:
+                for g in state.ghosts: g.scared = False
+
+            px, py = state.player.pixel_pos()
+            for g in state.ghosts:
+                if g.eaten: continue
+                gx, gy = g.pixel_pos()
+                if (px-gx)**2 + (py-gy)**2 < (CELL*0.55)**2:
+                    if g.scared:
+                        g.eaten, g.scared, state.player.score = True, False, state.player.score + 200
+                    else:
+                        state.player.lives -= 1
+                        if state.player.lives <= 0: state.game_over = True
+                        else: state.reset_actor_positions()
+                    break
+
+            if not state.dots and not state.pellets: state.win = True
+
+        screen.blit(wall_surface, (0, 0))
+        draw_dots(screen, state)
+        draw_flashlight(screen, state.player)
+        for g in state.ghosts: draw_ghost(screen, g)
+        draw_player(screen, state.player)
+        draw_hud(screen, state)
+        pygame.display.flip()
+
+    pygame.quit()
+    sys.exit()
+
+
+if __name__ == "__main__":
+    main()
