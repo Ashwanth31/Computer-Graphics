@@ -1,0 +1,53 @@
+import pygame
+ 
+pygame.init()
+screen = pygame.display.set_mode((800, 600))
+pygame.display.set_caption("Perspective Transformation")
+ 
+WHITE = (255, 255, 255)
+BLUE = (0, 100, 255)
+RED = (255, 0, 0)
+ 
+# A small cube defined as two square faces at different depths (z)
+points = [
+    (-100, -100, 100), (100, -100, 100),
+    (100, 100, 100), (-100, 100, 100),
+    (-50, -50, 300), (50, -50, 300),
+    (50, 50, 300), (-50, 50, 300)
+]
+ 
+f = 400  # focal length
+ 
+ 
+def project(point):
+    x, y, z = point
+    X = f * x / z
+    Y = f * y / z
+    return (round(400 + X), round(300 + Y))
+ 
+ 
+p = [project(point) for point in points]
+ 
+running = True
+while running:
+    screen.fill(WHITE)
+ 
+    # front face
+    for i in range(4):
+        pygame.draw.line(screen, BLUE, p[i], p[(i + 1) % 4], 2)
+ 
+    # back face
+    for i in range(4):
+        pygame.draw.line(screen, RED, p[i + 4], p[4 + (i + 1) % 4], 2)
+ 
+    # connecting edges between front and back faces
+    for i in range(4):
+        pygame.draw.line(screen, BLUE, p[i], p[i + 4], 2)
+ 
+    pygame.display.update()
+ 
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+ 
+pygame.quit()
