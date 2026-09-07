@@ -1,0 +1,59 @@
+import pygame
+import math
+ 
+pygame.init()
+screen = pygame.display.set_mode((800, 600))
+pygame.display.set_caption("Composite Transformation")
+ 
+WHITE = (255, 255, 255)
+BLUE = (0, 0, 255)
+RED = (255, 0, 0)
+ 
+triangle = [(100, 150), (200, 150), (150, 70)]
+ 
+ 
+def multiply(A, B):
+    C = [[0, 0, 0] for _ in range(3)]
+    for i in range(3):
+        for j in range(3):
+            for k in range(3):
+                C[i][j] += A[i][k] * B[k][j]
+    return C
+ 
+ 
+def transform(points, M):
+    result = []
+    for x, y in points:
+        nx = M[0][0] * x + M[0][1] * y + M[0][2]
+        ny = M[1][0] * x + M[1][1] * y + M[1][2]
+        result.append((round(nx), round(ny)))
+    return result
+ 
+ 
+T = [[1, 0, 250], [0, 1, 100], [0, 0, 1]]
+S = [[1.5, 0, 0], [0, 1.5, 0], [0, 0, 1]]
+ 
+angle = math.radians(30)
+R = [[math.cos(angle), -math.sin(angle), 0],
+     [math.sin(angle), math.cos(angle), 0],
+     [0, 0, 1]]
+ 
+# Composite matrix: first scale, then rotate, then translate
+RS = multiply(R, S)
+M = multiply(T, RS)
+transformed = transform(triangle, M)
+ 
+running = True
+while running:
+    screen.fill(WHITE)
+ 
+    pygame.draw.polygon(screen, BLUE, triangle, 2)      # original
+    pygame.draw.polygon(screen, RED, transformed, 2)    # composite result
+ 
+    pygame.display.update()
+ 
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+ 
+pygame.quit()
