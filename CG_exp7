@@ -1,0 +1,97 @@
+import pygame
+ 
+pygame.init()
+screen = pygame.display.set_mode((800, 600))
+pygame.display.set_caption("Midpoint Circle and Ellipse")
+ 
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+ 
+ 
+def plot_circle_points(cx, cy, x, y):
+    pts = [
+        (cx + x, cy + y), (cx - x, cy + y),
+        (cx + x, cy - y), (cx - x, cy - y),
+        (cx + y, cy + x), (cx - y, cy + x),
+        (cx + y, cy - x), (cx - y, cy - x)
+    ]
+    for px, py in pts:
+        if 0 <= px < 800 and 0 <= py < 600:
+            screen.set_at((px, py), BLACK)
+ 
+ 
+def midpoint_circle(cx, cy, r):
+    x, y = 0, r
+    p = 1 - r
+ 
+    while x <= y:
+        plot_circle_points(cx, cy, x, y)
+        x += 1
+        if p < 0:
+            p += 2 * x + 1
+        else:
+            y -= 1
+            p += 2 * (x - y) + 1
+ 
+ 
+def plot_ellipse_points(cx, cy, x, y):
+    pts = [
+        (cx + x, cy + y), (cx - x, cy + y),
+        (cx + x, cy - y), (cx - x, cy - y)
+    ]
+    for px, py in pts:
+        if 0 <= px < 800 and 0 <= py < 600:
+            screen.set_at((px, py), BLACK)
+ 
+ 
+def midpoint_ellipse(cx, cy, rx, ry):
+    rx2 = rx * rx
+    ry2 = ry * ry
+ 
+    x, y = 0, ry
+ 
+    # Region 1
+    p1 = ry2 - rx2 * ry + 0.25 * rx2
+    dx = 2 * ry2 * x
+    dy = 2 * rx2 * y
+ 
+    while dx < dy:
+        plot_ellipse_points(cx, cy, x, y)
+        x += 1
+        dx += 2 * ry2
+ 
+        if p1 < 0:
+            p1 += dx + ry2
+        else:
+            y -= 1
+            dy -= 2 * rx2
+            p1 += dx - dy + ry2
+ 
+    # Region 2
+    p2 = (ry2 * (x + 0.5) ** 2 + rx2 * (y - 1) ** 2 - rx2 * ry2)
+ 
+    while y >= 0:
+        plot_ellipse_points(cx, cy, x, y)
+        y -= 1
+        dy -= 2 * rx2
+ 
+        if p2 > 0:
+            p2 += rx2 - dy
+        else:
+            x += 1
+            dx += 2 * ry2
+            p2 += dx - dy + rx2
+ 
+ 
+running = True
+while running:
+    screen.fill(WHITE)
+    midpoint_circle(250, 300, 100)
+    midpoint_ellipse(550, 300, 150, 80)
+    pygame.display.update()
+ 
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+ 
+pygame.quit()
