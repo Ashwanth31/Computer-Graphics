@@ -1,0 +1,110 @@
+import pygame
+ 
+pygame.init()
+screen = pygame.display.set_mode((800, 600))
+pygame.display.set_caption("Sutherland-Hodgman Polygon Clipping")
+ 
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+RED = (255, 0, 0)
+BLUE = (0, 100, 255)
+ 
+xmin, ymin = 200, 150
+xmax, ymax = 600, 450
+ 
+polygon = [
+    (100, 200), (350, 80),
+    (700, 150), (650, 500),
+    (300, 550)
+]
+ 
+ 
+def inside(point, edge):
+    x, y = point
+    if edge == "left":
+        return x >= xmin
+    if edge == "right":
+        return x <= xmax
+    if edge == "top":
+        return y >= ymin
+    return y <= ymax  # "bottom"
+ 
+ 
+def intersection(p1, p2, edge):
+    x1, y1 = p1
+    x2, y2 = p2
+ 
+    if edge == "left":
+        x = xmin
+        y = y1 + (y2 - y1) * (xmin - x1) / (x2 - x1)
+    elif edge == "right":
+        x = xmax
+        y = y1 + (y2 - y1) * (xmax - x1) / (x2 - x1)
+    elif edge == "top":
+        y = ymin
+        x = x1 + (x2 - x1) * (ymin - y1) / (y2 - y1)
+    else:  # "bottom"
+        y = ymax
+        x = x1 + (x2 - x1) * (ymax - y1) / (y2 - y1)
+ 
+    return (round(x), round(y))
+ 
+ 
+def clip_polygon(points, edge):
+    if not points:
+        return []
+ 
+    output = []
+    previous = points[-1]
+ 
+    for current in points:
+        current_inside = inside(current, edge)
+        previous_inside = inside(previous, edge)
+ 
+        if current_inside and previous_inside:
+            output.append(current)
+        elif current_inside and not previous_inside:
+            output.append(intersection(previous, current, edge))
+            output.append(current)
+        elif not current_inside and previous_inside:
+            output.append(intersection(previous, current, edge))
+        # else: both outside -> add nothing
+ 
+        previous = current
+ 
+    return output
+ 
+ 
+def sutherland_hodgman(points):
+    for edge in ["left", "right", "top", "bottom"]:
+        points = clip_polygon(points, edge)
+    return points
+ 
+ 
+clipped = sutherland_hodgman(polygon)
+ 
+running = True
+while running:
+    screen.fill(WHITE)
+ 
+    # clipping window
+    pygame.draw.rect(
+        screen, BLACK,
+        (xmin, ymin, xmax - xmin, ymax - ymin), 2
+    )
+ 
+    # original polygon
+    pygame.draw.polygon(screen, RED, polygon, 2)
+ 
+    # clipped polygon, filled, with antialiased edges
+    if len(clipped) >= 3:
+        pygame.draw.polygon(screen, BLUE, clipped)
+        pygame.draw.aalines(screen, BLACK, True, clipped)
+ 
+    pygame.display.update()
+ 
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+ 
+pygame.quit()
