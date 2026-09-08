@@ -1,0 +1,85 @@
+import pygame
+ 
+pygame.init()
+screen = pygame.display.set_mode((800, 600))
+pygame.display.set_caption("Scan-Line Polygon Filling")
+ 
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+RED = (255, 0, 0)
+ 
+polygon = [
+    (150, 200), (300, 100), (500, 150),
+    (600, 350), (400, 500), (180, 400)
+]
+ 
+# A second, smaller polygon (drawn on the right) is filled using Flood Fill
+flood_polygon = [(650, 480), (700, 420), (760, 460), (730, 540), (660, 540)]
+ 
+ 
+def flood_fill(surface, seed, fill_color, boundary_color):
+    """Iterative 4-connected flood fill (stack-based to avoid recursion limits)."""
+    x0, y0 = seed
+    old_color = surface.get_at((x0, y0))[:3]
+ 
+    if old_color == fill_color or old_color == boundary_color:
+        return
+ 
+    stack = [(x0, y0)]
+    while stack:
+        x, y = stack.pop()
+        if x < 0 or x >= 800 or y < 0 or y >= 600:
+            continue
+ 
+        current = surface.get_at((x, y))[:3]
+        if current != old_color:
+            continue
+ 
+        surface.set_at((x, y), fill_color)
+        stack.extend([(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)])
+ 
+ 
+def scanline_fill(points):
+    ymin = min(y for x, y in points)
+    ymax = max(y for x, y in points)
+ 
+    for y in range(ymin, ymax + 1):
+        intersections = []
+ 
+        for i in range(len(points)):
+            x1, y1 = points[i]
+            x2, y2 = points[(i + 1) % len(points)]
+ 
+            if y1 != y2 and min(y1, y2) <= y < max(y1, y2):
+                x = x1 + (y - y1) * (x2 - x1) / (y2 - y1)
+                intersections.append(round(x))
+ 
+        intersections.sort()
+ 
+        for i in range(0, len(intersections) - 1, 2):
+            pygame.draw.line(
+                screen, RED,
+                (intersections[i], y),
+                (intersections[i + 1], y)
+            )
+ 
+ 
+# Draw the static scene once (flood fill is expensive to redo every frame)
+screen.fill(WHITE)
+ 
+pygame.draw.polygon(screen, BLACK, polygon, 2)
+scanline_fill(polygon)
+ 
+pygame.draw.polygon(screen, BLACK, flood_polygon, 2)
+seed_point = (700, 480)  # a point known to be inside flood_polygon
+flood_fill(screen, seed_point, fill_color=(0, 180, 0), boundary_color=BLACK)
+ 
+running = True
+while running:
+    pygame.display.update()
+ 
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+ 
+pygame.quit()
